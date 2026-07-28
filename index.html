@@ -212,7 +212,7 @@
 
       try {
         stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { width: 600, height: 480 } 
+          video: { width: 600, height: 450 } 
         });
         videoElement.srcObject = stream;
         
@@ -223,7 +223,7 @@
             }
           },
           width: 600,
-          height: 480
+          height: 450
         });
 
         await camera.start();
