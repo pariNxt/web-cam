@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kamera & Deteksi Gestur Peace</title>
+  
+  <!-- MediaPipe Hands JS Library via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #121212;
+      color: #ffffff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+
+    h1 {
+      margin-bottom: 10px;
+      font-size: 1.8rem;
+      color: #4da6ff;
+    }
+
+    p {
+      color: #aaa;
+      margin-top: 0;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    .video-container {
+      position: relative;
+      width: 100%;
+      max-width: 640px;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+      background-color: #000;
+    }
+
+    /* Video disembunyikan karena frame dirender ke canvas */
+    video {
+      display: none;
+    }
+
+    canvas {
+      width: 100%;
+      height: auto;
+      display: block;
+      transform: scaleX(-1); /* Mirror/cermin tampilan kamera */
+    }
+
+    .controls {
+      margin-top: 20px;
+      display: flex;
+      gap: 15px;
+    }
+
+    button {
+      padding: 12px 24px;
+      font-size: 1rem;
+      font-weight: bold;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease-in-out;
+    }
+
+    .btn-start {
+      background-color: #28a745;
+      color: white;
+    }
+
+    .btn-start:hover {
+      background-color: #218838;
+    }
+
+    .btn-stop {
+      background-color: #dc3545;
+      color: white;
+    }
+
+    .btn-stop:hover {
+      background-color: #c82333;
+    }
+
+    .status-badge {
+      margin-top: 15px;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      background-color: #333;
+      color: #ffc107;
+    }
+
+    .status-badge.active {
+      background-color: #1b5e20;
+      color: #81c784;
+    }
+
+    .status-badge.peace {
+      background-color: #0d47a1;
+      color: #64b5f6;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Webcam & Deteksi Gestur "Peace" (Blur)</h1>
+  <p>Tunjukkan simbol jari Peace (✌️) ke kamera untuk mengaktifkan efek Blur!</p>
+
+  <div class="video-container">
+    <!-- Elemen Video Kamera -->
+    <video id="webcam" autoplay playsinline></video>
+    <!-- Elemen Canvas tempat menampilkan frame + efek Blur -->
+    <canvas id="output_canvas" width="640" height="480"></canvas>
+  </div>
+
+  <div class="controls">
+    <button class="btn-start" onclick="startCamera()">Start Camera</button>
+    <button class="btn-stop" onclick="stopCamera()">Stop Camera</button>
+  </div>
+
+  <div id="status" class="status-badge">Kamera Mati</div>
+
+  <script>
+    let stream = null;
+    let camera = null;
+    let isRunning = false;
+
+    const videoElement = document.getElementById('webcam');
+    const canvasElement = document.getElementById('output_canvas');
+    const canvasCtx = canvasElement.getContext('2d');
+    const statusBadge = document.getElementById('status');
+
+    // Inisialisasi MediaPipe Hands
+    const hands = new Hands({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+    });
+
+    hands.setOptions({
+      maxNumHands: 1,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5
+    });
+
+    hands.onResults(onResults);
+
+    // Fungsi periksa jari terangkat (y tip < y pip)
+    function fingerUp(tipIdx, pipIdx, landmarks) {
+      return landmarks[tipIdx].y < landmarks[pipIdx].y;
+    }
+
+    // Fungsi deteksi gestur Peace (Jari telunjuk & tengah naik, manis & kelingking turun)
+    function isPeace(landmarks) {
+      const indexUp = fingerUp(8, 6, landmarks);
+      const middleUp = fingerUp(12, 10, landmarks);
+      const ringUp = fingerUp(16, 14, landmarks);
+      const pinkyUp = fingerUp(20, 18, landmarks);
+
+      return indexUp && middleUp && !ringUp && !pinkyUp;
+    }
+
+    // Callback pemrosesan frame dari MediaPipe
+    function onResults(results) {
+      if (!isRunning) return;
+
+      canvasCtx.save();
+      canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+      let peaceDetected = false;
+
+      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+        for (const landmarks of results.multiHandLandmarks) {
+          if (isPeace(landmarks)) {
+            peaceDetected = true;
+            break;
+          }
+        }
+      }
+
+      // Terapkan Gaussian Blur jika gestur Peace terdeteksi
+      if (peaceDetected) {
+        canvasCtx.filter = 'blur(15px)';
+        statusBadge.textContent = '✌️ Gestur Peace Terdeteksi (Efek Blur Aktif)';
+        statusBadge.className = 'status-badge peace';
+      } else {
+        canvasCtx.filter = 'none';
+        statusBadge.textContent = '📷 Kamera Aktif';
+        statusBadge.className = 'status-badge active';
+      }
+
+      // Gambar frame video ke canvas
+      canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+      canvasCtx.restore();
+    }
+
+    // Fungsi Memulai Kamera
+    async function startCamera() {
+      if (isRunning) return;
+
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { width: 640, height: 480 } 
+        });
+        videoElement.srcObject = stream;
+        
+        camera = new Camera(videoElement, {
+          onFrame: async () => {
+            if (isRunning) {
+              await hands.send({ image: videoElement });
+            }
+          },
+          width: 640,
+          height: 480
+        });
+
+        await camera.start();
+        isRunning = true;
+        statusBadge.textContent = '📷 Kamera Aktif';
+        statusBadge.className = 'status-badge active';
+      } catch (err) {
+        console.error('Error accessing camera:', err);
+        alert('Gagal mengakses kamera: ' + err.message);
+      }
+    }
+
+    // Fungsi Menghentikan Kamera
+    function stopCamera() {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
+      }
+      if (camera) {
+        camera.stop();
+        camera = null;
+      }
+      videoElement.srcObject = null;
+      isRunning = false;
+
+      canvasCtx.filter = 'none';
+      canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+      
+      statusBadge.textContent = 'Kamera Mati';
+      statusBadge.className = 'status-badge';
+    }
+  </script>
+</body>
+</html>
